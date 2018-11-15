@@ -60,7 +60,7 @@ def predict_veracity_collective_regression(g, evidence, alpha, learning_rate=0.5
     non_evidence = np.isin(range(0, len(g)), evidence.id, invert=True)
     node_names = np.array(list(nx.get_node_attributes(g, 'name').values()))[non_evidence]
 
-    return dict(zip(node_names, veracity[:,0].reshape(-1,)))
+    return dict(zip(node_names, veracity[:,0].reshape(-1,).tolist()[0]))
 
 
 def truncated_katz(g, alpha=0.75):
@@ -79,7 +79,7 @@ def predict_veracity_truncated_katz(g, evidence, alpha=0.75):
     non_evidence = np.isin(range(0, len(g)), evidence.id, invert=True)
 
     node_names = np.array(list(nx.get_node_attributes(g, 'name').values()))[non_evidence]
-    return dict(zip(node_names, veracity[non_evidence, 0].reshape(-1,)))
+    return dict(zip(node_names, veracity[non_evidence, 0].reshape(-1,).tolist()[0]))
 
 
 def example():
