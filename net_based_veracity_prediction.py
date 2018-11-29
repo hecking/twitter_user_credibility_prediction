@@ -35,7 +35,7 @@ def predict_veracity(ego_net, ego, strategy='katz'):
         if strategy == 'katz':
             veracity_predicted = predict_veracity_truncated_katz(combined_graph, evidence_nodes)
         else:
-            veracity_predicted = predict_veracity_collective_regression(combined_graph, evidence_nodes, 0.9)
+            veracity_predicted = predict_veracity_collective_regression(combined_graph, evidence_nodes, 1)
 
         result = veracity_predicted[ego]
     else:

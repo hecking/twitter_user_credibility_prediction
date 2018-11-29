@@ -3,32 +3,26 @@ import numpy as np
 import pandas as pd
 
 
-def get_fit(A1, A2, x, b, evidence, alpha):
-    return np.sum(alpha**2 * np.square(A2.dot(A1.dot(x) + b) - evidence))
+def get_fit(A, x, mask_vector, evidence, alpha):
+    return np.sum(np.square(alpha * A.dot(x) - mask_vector * x - evidence))
 
 
 # Optimise veracity assignment by gradient descent.
-def propagate_trust(A1, A2, b, alpha, evidence, init=None, learning_rate=0.1, verbose=True):
+def propagate_trust(A, alpha, mask_vector, evidence, x, learning_rate=0.1, verbose=True):
 
-    if init is None:
-        x = np.random.rand(np.size(A1, 0))
-        x = x.reshape(x.shape[0], 1)
-    else:
-        x = init
-
-    old_q = get_fit(A1, A2, x, b, evidence, alpha)
+    old_q = get_fit(A, x, mask_vector, evidence, alpha)
 
     if verbose:
         print("Q = " + str(old_q))
 
-    gradient = alpha * (A2.dot(A1).T.dot(A2.dot(A1.dot(x) + b) - evidence))
+    gradient = (alpha * A - np.diag(mask_vector[:,0])).dot(alpha * A.dot(x) - mask_vector * x - evidence)
 
     new_x = x - (learning_rate * gradient)
 
     new_x[new_x < 0] = 0
     new_x[new_x > 1] = 1
 
-    new_q = get_fit(A1, A2, new_x, b, evidence, alpha)
+    new_q = get_fit(A, x, mask_vector, evidence, alpha)
 
     # Adjust learning rate in case of overshooting a local optima.
     while old_q < new_q:
@@ -36,29 +30,37 @@ def propagate_trust(A1, A2, b, alpha, evidence, init=None, learning_rate=0.1, ve
             print("adjust learning rate")
             learning_rate = learning_rate / 2
             new_x = x + learning_rate * gradient
-            new_q = get_fit(A1, A2, new_x, b, evidence, alpha)
+            new_q = get_fit(A, x, mask_vector, evidence, alpha)
 
     if np.sum(np.square(x - new_x)) < 0.0001:
         return new_x
     else:
-        return propagate_trust(A1, A2, b, alpha, evidence, new_x, learning_rate, verbose)
+        return propagate_trust(A, alpha, mask_vector, evidence, x, learning_rate, verbose)
 
 
 def predict_veracity_collective_regression(g, evidence, alpha, learning_rate=0.5, init=None, verbose=True):
+
+    # Adjacency matrix
     A = nx.to_numpy_matrix(g)
     A = A / np.sum(A, axis=1)
     A = np.nan_to_num(A)
-    A1 = np.delete(np.delete(A, evidence.id, axis=0), evidence.id, axis=1)
-    A2 = np.delete(np.take(A, evidence.id, axis=0), evidence.id, axis=1)
-    ev_vals = np.array(evidence.value.values)
-    ev_vals = ev_vals.reshape(ev_vals.shape[0], 1)
 
-    b = np.take(np.delete(A, evidence.id, axis=0), evidence.id, axis=1).dot(ev_vals)
+    # Initial credibility
+    if init is None:
+        init = np.random.rand(len(g))
+        init = init.reshape(init.shape[0], 1)
 
-    veracity = propagate_trust(A1, A2, b, alpha, ev_vals, init, learning_rate, verbose)
+    init[evidence.id] = evidence.value
 
-    non_evidence = np.isin(range(0, len(g)), evidence.id, invert=True)
-    node_names = np.array(list(nx.get_node_attributes(g, 'name').values()))[non_evidence]
+    # Evidence vector
+    evv = np.array(map(lambda nid: evidence.value[nid] if nid in evidence.id else 0, range(0, len(g))))
+
+    mask_vector = np.array(map(lambda nid: 0 if nid in evidence.id else 1, range(0, len(g))))
+    mask_vector = mask_vector.reshape(mask_vector.shape[0], 1)
+
+    veracity = propagate_trust(A, alpha, mask_vector, evv, init, learning_rate, verbose)
+
+    node_names = np.array(list(nx.get_node_attributes(g, 'name').values()))
 
     return dict(zip(node_names, veracity[:,0].reshape(-1,).tolist()[0]))
 
@@ -83,7 +85,8 @@ def predict_veracity_truncated_katz(g, evidence, alpha=0.75):
 
 
 def example():
-    g = nx.read_gml("user_graph_with_info_cleaned.gml", label='id').to_undirected()
+    #g = nx.read_gml("user_graph_with_info_cleaned.gml", label='id').to_undirected()
+    g = nx.read_gml("user_network.gml", label='id').to_undirected()
 
     node_df = pd.DataFrame.from_dict(dict(g.nodes(data=True)), orient='index')
     node_df['id'] = list(range(0, node_df.shape[0]))
