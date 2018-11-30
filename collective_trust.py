@@ -15,14 +15,14 @@ def propagate_trust(A, alpha, mask_vector, evidence, x, learning_rate=0.1, verbo
     if verbose:
         print("Q = " + str(old_q))
 
-    gradient = (alpha * A - np.diag(mask_vector[:,0])).dot(alpha * A.dot(x) - mask_vector * x - evidence)
+    gradient = np.array((alpha * A - np.diag(mask_vector[:,0])).dot(alpha * A.dot(x) - mask_vector * x - evidence))
 
     new_x = x - (learning_rate * gradient)
 
     new_x[new_x < 0] = 0
     new_x[new_x > 1] = 1
 
-    new_q = get_fit(A, x, mask_vector, evidence, alpha)
+    new_q = get_fit(A, new_x, mask_vector, evidence, alpha)
 
     # Adjust learning rate in case of overshooting a local optima.
     while old_q < new_q:
@@ -32,10 +32,11 @@ def propagate_trust(A, alpha, mask_vector, evidence, x, learning_rate=0.1, verbo
             new_x = x + learning_rate * gradient
             new_q = get_fit(A, x, mask_vector, evidence, alpha)
 
-    if np.sum(np.square(x - new_x)) < 0.0001:
+    if (np.sum(np.square(x - new_x)) < 1) or (old_q - new_q < 0.05):
         return new_x
     else:
-        return propagate_trust(A, alpha, mask_vector, evidence, x, learning_rate, verbose)
+        print(np.sum(np.square(x - new_x)))
+        return propagate_trust(A, alpha, mask_vector, evidence, new_x, learning_rate, verbose)
 
 
 def predict_veracity_collective_regression(g, evidence, alpha, learning_rate=0.5, init=None, verbose=True):
@@ -50,22 +51,24 @@ def predict_veracity_collective_regression(g, evidence, alpha, learning_rate=0.5
         init = np.random.rand(len(g))
         init = init.reshape(init.shape[0], 1)
 
-    init[evidence.id] = evidence.value
+    init[evidence.id, 0] = evidence.value
 
     # Evidence vector
-    evv = np.array(map(lambda nid: evidence.value[nid] if nid in evidence.id else 0, range(0, len(g))))
+    evv = np.array(list(map(lambda nid: evidence.value[nid] if nid in evidence.id else 0, range(0, len(g)))))
+    evv = evv.reshape(evv.shape[0], 1)
 
-    mask_vector = np.array(map(lambda nid: 0 if nid in evidence.id else 1, range(0, len(g))))
+    mask_vector = np.array(list(map(lambda nid: 0 if nid in evidence.id else 1, range(0, len(g)))))
     mask_vector = mask_vector.reshape(mask_vector.shape[0], 1)
 
     veracity = propagate_trust(A, alpha, mask_vector, evv, init, learning_rate, verbose)
 
-    node_names = np.array(list(nx.get_node_attributes(g, 'name').values()))
+    non_evidence = np.isin(range(0, len(g)), evidence.id, invert=True)
+    node_names = np.array(list(nx.get_node_attributes(g, 'name').values()))[non_evidence]
 
-    return dict(zip(node_names, veracity[:,0].reshape(-1,).tolist()[0]))
+    return dict(zip(node_names, veracity[non_evidence,0].reshape(-1,).tolist()))
 
 
-def truncated_katz(g, alpha=0.75):
+def truncated_katz(g, evidence, alpha=0.75):
     A = nx.to_numpy_matrix(g)
 
     return (alpha * A) + (alpha**2 * A.dot(A)) + (alpha**3 * A.dot(A).dot(A)) + (alpha**4 * A.dot(A).dot(A).dot(A).dot(A))
