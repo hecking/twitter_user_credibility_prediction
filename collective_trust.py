@@ -49,7 +49,13 @@ def predict_veracity_collective_regression(g, evidence, alpha, learning_rate=0.5
     # Initial credibility
     if init is None:
         init = np.random.rand(len(g))
-        init = init.reshape(init.shape[0], 1)
+    if init == "katz":
+        K = truncated_katz(g, alpha)
+        ev_vals = np.array(evidence.value.values)
+        ev_vals = ev_vals.reshape(ev_vals.shape[0], 1)
+        init = np.array(np.nan_to_num(K[:, evidence.id].dot(ev_vals) / np.sum(K[:, evidence.id], axis=1)))
+
+    init = init.reshape(init.shape[0], 1)
 
     init[evidence.id, 0] = evidence.value
 
@@ -68,7 +74,7 @@ def predict_veracity_collective_regression(g, evidence, alpha, learning_rate=0.5
     return dict(zip(node_names, veracity[non_evidence,0].reshape(-1,).tolist()))
 
 
-def truncated_katz(g, evidence, alpha=0.75):
+def truncated_katz(g, alpha=0.75):
     A = nx.to_numpy_matrix(g)
 
     return (alpha * A) + (alpha**2 * A.dot(A)) + (alpha**3 * A.dot(A).dot(A)) + (alpha**4 * A.dot(A).dot(A).dot(A).dot(A))
@@ -102,7 +108,7 @@ def example():
     print("Truncated Katz")
     p_katz = predict_veracity_truncated_katz(g, evidence_nodes, 0.75)
     print("Collective regression")
-    p_colreg = predict_veracity_collective_regression(g, evidence_nodes, 1)
+    p_colreg = predict_veracity_collective_regression(g, evidence_nodes, 1, init="katz")
 
     return p_colreg, p_katz
 
